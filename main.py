@@ -38,27 +38,36 @@ def obtener_token(session):
 
 def procesar_correo(correo):
     session = requests.Session()
-    token = obtener_token(session)
-    if not token:
-        with open("log.txt", "a", encoding="utf-8") as log_file:
-            log_file.write(f"Fallo al obtener token para el correo {correo}\n")
-        return
+    while True:
+        token = obtener_token(session)
+        if not token:
+            with open("log.txt", "a", encoding="utf-8") as log_file:
+                log_file.write(f"Fallo al obtener token para el correo {correo}\n")
+            return
 
-    payload = {
-        "authenticity_token": token,
-        "email": correo
-    }
-    payload.update(FIXED_PAYLOAD)
+        payload = {
+            "authenticity_token": token,
+            "email": correo
+        }
+        payload.update(FIXED_PAYLOAD)
 
-    try:
-        post_response = session.post(POST_URL, data=payload, headers=HEADERS)
-        with open("log.txt", "a", encoding="utf-8") as log_file:
-            log_file.write(f"se procesó el correo {correo} - Código {post_response.status_code}\n")
-        print(f"Correo {correo}: procesado - Código {post_response.status_code}")
-    except Exception as e:
-        with open("log.txt", "a", encoding="utf-8") as log_file:
-            log_file.write(f"Error procesando {correo}: {e}\n")
-        print(f"Error procesando {correo}: {e}")
+        try:
+            post_response = session.post(POST_URL, data=payload, headers=HEADERS)
+            if post_response.status_code == 403:
+                with open("log.txt", "a", encoding="utf-8") as log_file:
+                    log_file.write(f"Correo {correo}: recibido código 403, esperando 20 minutos antes de reintentar.\n")
+                print(f"Correo {correo}: recibido código 403, esperando 20 minutos antes de reintentar.")
+                time.sleep(20 * 60)  # Esperar 20 minutos
+                continue  # Reintentar
+            with open("log.txt", "a", encoding="utf-8") as log_file:
+                log_file.write(f"se procesó el correo {correo} - Código {post_response.status_code}\n")
+            print(f"Correo {correo}: procesado - Código {post_response.status_code}")
+            break  # Salir del bucle si la solicitud fue exitosa
+        except Exception as e:
+            with open("log.txt", "a", encoding="utf-8") as log_file:
+                log_file.write(f"Error procesando {correo}: {e}\n")
+            print(f"Error procesando {correo}: {e}")
+            break  # Salir del bucle si hay un error diferente a 403
 
 @app.route("/")
 def mostrar_log():
@@ -92,11 +101,11 @@ def ejecutar_proceso():
 
     for correo in correos:
         procesar_correo(correo)
-        time.sleep(2)
+        time.sleep(20)  # Esperar 20 segundos entre cada solicitud
 
 if __name__ == "__main__":
     # Ejecutar el proceso de correos en un hilo separado
     proceso_thread = threading.Thread(target=ejecutar_proceso)
     proceso_thread.start()
     # Iniciar el servidor Flask
-    app.run(host="0.0.0.0", port=8080)
+    app.run(host="0.0.0.0", port=9999)
